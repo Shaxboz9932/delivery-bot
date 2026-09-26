@@ -1,6 +1,9 @@
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from orders.models import Order, OrderStatus, Courier
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -20,23 +23,23 @@ async def take_order(callback: types.CallbackQuery, bot):
         await callback.answer("Siz ro'yxatdan o'tmagansiz yoki faol emassiz! Iltimos, admin bilan bog'laning.", show_alert=True)
         return
 
-    try:
-        order = await Order.objects.select_related('restaurant').aget(id=order_id)
-    except Order.DoesNotExist:
-        await callback.answer("Buyurtma topilmadi!", show_alert=True)
-        return
+    # TEKSHIRUV VA YANGILASH (Atomic Update - Race condition ni oldini oladi)
+    updated_count = await Order.objects.filter(
+        id=order_id,
+        status=OrderStatus.READY
+    ).aupdate(
+        status=OrderStatus.DELIVERING,
+        courier_tg_id=courier_user.id,
+        courier_name=db_courier.name,
+        courier_username=courier_user.username or ''
+    )
 
-    # TEKSHIRUV: Agar buyurtmani boshqa kuryer olib bo'lgan bo'lsa
-    if order.status in [OrderStatus.DELIVERING, OrderStatus.COMPLETED]:
+    if updated_count == 0:
         await callback.answer("Afsuski, ushbu buyurtmani boshqa kuryer olib bo'ldi!", show_alert=True)
         return
 
-    # Buyurtmani ushbu kuryerga biriktiramiz
-    order.status = OrderStatus.DELIVERING
-    order.courier_tg_id = courier_user.id
-    order.courier_name = db_courier.name
-    order.courier_username = courier_user.username or ''
-    await order.asave()
+    # Endi qolgan xabarlarni yuborish uchun orderni ma'lumotlari bilan bazadan olamiz
+    order = await Order.objects.select_related('restaurant').aget(id=order_id)
 
     complete_keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(
@@ -70,8 +73,8 @@ async def take_order(callback: types.CallbackQuery, bot):
                      f"<b>Telefon:</b> {db_courier.phone_number}",
                 reply_to_message_id=order.restaurant_msg_id
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception(f"Kuryer olish xabarini restoranga yuborishda xatolik (Order #{order.id}): {e}")
 
     await callback.answer("Buyurtma sizga biriktirildi!")
 
@@ -124,8 +127,8 @@ async def complete_order(callback: types.CallbackQuery, bot):
                      f"<b>Kuryer:</b> {order.courier_name}",
                 reply_to_message_id=order.restaurant_msg_id
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.exception(f"Kuryer yetkazish xabarini restoranga yuborishda xatolik (Order #{order.id}): {e}")
 
     await callback.answer("Buyurtma yakunlandi!")
 

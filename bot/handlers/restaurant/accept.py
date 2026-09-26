@@ -57,12 +57,12 @@ async def accept_order(callback: types.CallbackQuery, bot):
                 callback_data=f"ready_order_{order.id}"
             )
         ],
-        [
-            types.InlineKeyboardButton(
-                text="⚠️ Qisman qabul (taom yo'q)",
-                callback_data=f"partial_accept_{order.id}"
-            )
-        ],
+        # [
+        #     types.InlineKeyboardButton(
+        #         text="⚠️ Qisman qabul (taom yo'q)",
+        #         callback_data=f"partial_accept_{order.id}"
+        #     )
+        # ],
         [
             types.InlineKeyboardButton(
                 text="❌ Bekor qilish",
@@ -82,3 +82,59 @@ async def accept_order(callback: types.CallbackQuery, bot):
             reply_markup=keyboard
         )
     await callback.answer("Buyurtma qabul qilindi!")
+
+
+# 2. Restoran to'lov chekini tasdiqlaganda
+@router.callback_query(F.data.startswith("confirm_payment_"))
+async def confirm_payment(callback: types.CallbackQuery, bot):
+    order_id = int(callback.data.split("_")[-1])
+
+    try:
+        order = await Order.objects.aget(id=order_id)
+    except Order.DoesNotExist:
+        await callback.answer("Buyurtma topilmadi!", show_alert=True)
+        return
+
+    order.is_paid = True
+    order.status = OrderStatus.ACCEPTED
+    await order.asave()
+
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [
+            types.InlineKeyboardButton(
+                text="🚀 Oshxona tayyorladi (Kuryerga yuborish)",
+                callback_data=f"ready_order_{order.id}"
+            )
+        ],
+        # [
+        #     types.InlineKeyboardButton(
+        #         text="⚠️ Qisman qabul (taom yo'q)",
+        #         callback_data=f"partial_accept_{order.id}"
+        #     )
+        # ],
+        [
+            types.InlineKeyboardButton(
+                text="❌ Bekor qilish",
+                callback_data=f"cancel_order_{order.id}"
+            )
+        ]
+    ])
+
+    if callback.message.photo:
+        await callback.message.edit_caption(
+            caption=f"{callback.message.html_text}\n\n<b>Status:</b> To'lov tasdiqlandi, tayyorlanmoqda 👨‍🍳",
+            reply_markup=keyboard
+        )
+    else:
+        await callback.message.edit_text(
+            f"{callback.message.html_text}\n\n<b>Status:</b> To'lov tasdiqlandi, tayyorlanmoqda 👨‍🍳",
+            reply_markup=keyboard
+        )
+
+    await bot.send_message(
+        chat_id=order.customer_tg_id,
+        text=f"✅ <b>Buyurtmangiz (#{order.id}) to'lovi tasdiqlandi!</b>\n"
+             f"Oshxona buyurtmani tayyorlashni boshladi."
+    )
+
+    await callback.answer("To'lov tasdiqlandi!")

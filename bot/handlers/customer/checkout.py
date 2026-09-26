@@ -5,6 +5,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 from orders.models import Restaurant, Order, OrderStatus, OrderItem
 from .states import OrderCheckout
@@ -134,27 +137,53 @@ async def process_payment_method(callback: types.CallbackQuery, state: FSMContex
 
     elif payment_method == "pay_card_now":
         await state.update_data(payment_method="card_now")
-
-        card_info = f"<b>Karta raqami:</b> <code>{restaurant.card_number}</code>\n<b>Karta egasi:</b> {restaurant.card_owner_name}" if restaurant.card_number else "Karta ma'lumotlari kiritilmagan. Iltimos admin bilan bog'laning yoki Naqd to'lovni tanlang."
-
-        await callback.message.edit_text(
-            f"Siz karta orqali to'lovni tanladingiz.\n\n"
-            f"Jami to'lov summasi: <b>{formatted_total} so'm</b>\n\n"
-            f"{card_info}\n\n"
-            f"Iltimos, to'lovni amalga oshirganingizdan so'ng <b>skrinshotni shu yerga yuboring.</b>"
-        )
-        await state.set_state(OrderCheckout.waiting_for_payment_screenshot)
+        await finalize_order(callback.message, state, bot, callback.from_user)
+        await callback.message.delete()
 
     await callback.answer()
 
 
 # 15. Mijoz to'lov skrinshotini yuborganda (Restoran tasdiqlaganidan so'ng)
-@router.message(OrderCheckout.waiting_for_payment_screenshot, F.photo)
-async def process_payment_screenshot(message: types.Message, state: FSMContext, bot):
-    photo_id = message.photo[-1].file_id # Eng sifatli rasmni olamiz
-    await state.update_data(payment_screenshot_url=photo_id)
+@router.message(F.photo)
+async def process_payment_screenshot(message: types.Message, bot):
+    # Foydalanuvchining WAITING_PAYMENT holatidagi buyurtmasini qidiramiz
+    order = await Order.objects.select_related('restaurant').filter(
+        customer_tg_id=message.from_user.id,
+        status=OrderStatus.WAITING_PAYMENT,
+        payment_method="card_now"
+    ).afirst()
 
-    await finalize_order(message, state, bot, message.from_user)
+    if not order:
+        return
+
+    photo_id = message.photo[-1].file_id # Eng sifatli rasmni olamiz
+    order.payment_screenshot_url = photo_id
+    await order.asave()
+    
+    keyboard = InlineKeyboardBuilder()
+    keyboard.add(types.InlineKeyboardButton(
+        text="✅ Tasdiqlash (Pul tushdi)",
+        callback_data=f"confirm_payment_{order.id}"
+    ))
+    keyboard.add(types.InlineKeyboardButton(
+        text="❌ Bekor qilish",
+        callback_data=f"cancel_order_{order.id}"
+    ))
+    keyboard.adjust(1)
+    
+    if order.restaurant_msg_id:
+        try:
+            await bot.send_photo(
+                chat_id=order.restaurant.telegram_group_id,
+                photo=photo_id,
+                caption=f"💳 <b>#{order.id} buyurtma uchun to'lov cheki yuborildi!</b>\nTasdiqlaysizmi?",
+                reply_markup=keyboard.as_markup(),
+                reply_to_message_id=order.restaurant_msg_id
+            )
+        except Exception as e:
+            logger.exception(f"To'lov skrinshotini restoranga yuborishda xatolik (Order #{order.id}): {e}")
+
+    await message.answer("✅ To'lov chekingiz restoranga yuborildi. Iltimos, tasdiqlanishini kuting.")
 
 
 async def finalize_order(message_or_callback_msg, state: FSMContext, bot, user):
@@ -228,6 +257,10 @@ async def finalize_order(message_or_callback_msg, state: FSMContext, bot, user):
     restaurant_keyboard.add(types.InlineKeyboardButton(
         text="✅ Qabul qilish",
         callback_data=f"accept_order_{order.id}"
+    ))
+    restaurant_keyboard.add(types.InlineKeyboardButton(
+        text="⚠️ Qisman qabul (taom yo'q)",
+        callback_data=f"partial_accept_{order.id}"
     ))
     restaurant_keyboard.add(types.InlineKeyboardButton(
         text="❌ Bekor qilish",

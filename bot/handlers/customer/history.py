@@ -1,6 +1,9 @@
 from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import logging
+
+logger = logging.getLogger(__name__)
 
 from orders.models import Order, OrderItem, OrderStatus
 from .cart import view_cart_handler
@@ -108,16 +111,45 @@ async def partial_confirm_handler(callback: types.CallbackQuery, bot):
         await callback.answer("Bu buyurtma allaqachon qayta ishlangan.", show_alert=True)
         return
 
+    if order.payment_method == "card_now" and not order.is_paid:
+        order.status = OrderStatus.WAITING_PAYMENT
+        await order.asave()
+
+        formatted_total = f"{float(order.total_price):,.0f}".replace(",", " ")
+        card_info = f"<b>Karta raqami:</b> <code>{order.restaurant.card_number}</code>\n<b>Karta egasi:</b> {order.restaurant.card_owner_name}" if order.restaurant.card_number else "Karta ma'lumotlari kiritilmagan. Iltimos admin bilan bog'laning."
+
+        try:
+            await callback.message.edit_text(
+                callback.message.html_text + "\n\n<b>Siz tasdiqladingiz! Endi to'lovni amalga oshiring.</b>",
+                reply_markup=None
+            )
+        except Exception as e:
+            logger.exception(f"Xabarni tahrirlashda xatolik (Order #{order.id}): {e}")
+
+        await bot.send_message(
+            chat_id=order.customer_tg_id,
+            text=f"✅ <b>Yangi buyurtmangiz (#{order.id}) uchun to'lov qiling!</b>\n\n"
+                 f"Jami to'lov summasi: <b>{formatted_total} so'm</b>\n\n"
+                 f"{card_info}\n\n"
+                 f"Iltimos, to'lovni amalga oshirganingizdan so'ng <b>to'lov skrinshotini shu yerga yuboring.</b>"
+        )
+        await bot.send_message(
+            chat_id=order.restaurant.telegram_group_id,
+            text=f"<b>Mijoz buyurtma #{order.id} yangilangan narxini tasdiqladi!</b>\nMijozdan to'lov kutilmoqda..."
+        )
+        await callback.answer("Roziligingiz qabul qilindi. To'lovni amalga oshiring.")
+        return
+
     order.status = OrderStatus.ACCEPTED
     await order.asave()
 
     try:
         await callback.message.edit_text(
-            callback.message.html_text + "\n\n<b>Siz tasdiqladi! Restoran tayyorlamoqda.</b>",
+            callback.message.html_text + "\n\n<b>Siz tasdiqladingiz! Restoran tayyorlamoqda.</b>",
             reply_markup=None
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception(f"Xabarni tahrirlashda xatolik (Order #{order.id}): {e}")
 
     await bot.send_message(
         chat_id=order.restaurant.telegram_group_id,
@@ -149,8 +181,8 @@ async def partial_cancel_handler(callback: types.CallbackQuery, bot):
             callback.message.html_text + "\n\nBuyurtma bekor qilindi.",
             reply_markup=None
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception(f"Xabarni tahrirlashda xatolik (Order #{order.id}): {e}")
 
     await bot.send_message(
         chat_id=order.restaurant.telegram_group_id,
