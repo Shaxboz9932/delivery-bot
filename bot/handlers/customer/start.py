@@ -10,6 +10,7 @@ router = Router()
 async def start_handler(message: types.Message):
     builder = ReplyKeyboardBuilder()
     builder.add(types.KeyboardButton(text="🛒 Zakaz berish"))
+    builder.add(types.KeyboardButton(text="🛒 Savatni ko'rish"))
     builder.add(types.KeyboardButton(text="📜 Mening buyurtmalarim"))
     builder.adjust(2)
 

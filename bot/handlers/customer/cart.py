@@ -61,6 +61,57 @@ async def add_to_cart_handler(callback: types.CallbackQuery, state: FSMContext):
 
 
 # 7. Savatni ko'rish va miqdorini boshqarish
+@router.message(F.text == "🛒 Savatni ko'rish")
+async def view_cart_message_handler(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    cart = data.get("cart", {})
+
+    if not cart:
+        await message.answer("Savatchangiz bo'sh!")
+        return
+
+    DELIVERY_FEE = 10_000.0
+
+    text = "🛒 <b>Sizning savatchangiz:</b>\n\n"
+    subtotal = 0.0
+
+    builder = InlineKeyboardBuilder()
+
+    for item_id, item in cart.items():
+        item_price = float(item['price'])
+        item_total = item_price * item['quantity']
+        subtotal += item_total
+
+        fmt_price = f"{item_price:,.0f}".replace(",", " ") if item_price.is_integer() else f"{item_price:,.2f}".replace(",", " ")
+        fmt_total = f"{item_total:,.0f}".replace(",", " ") if item_total.is_integer() else f"{item_total:,.2f}".replace(",", " ")
+
+        text += f"• <b>{item['name']}</b>: {item['quantity']} dona x {fmt_price} = <b>{fmt_total} so'm</b>\n"
+
+        builder.row(
+            types.InlineKeyboardButton(text="➖", style="danger", callback_data=f"dec_{item_id}"),
+            types.InlineKeyboardButton(text=f"{item['name']} ({item['quantity']})", callback_data="ignore"),
+            types.InlineKeyboardButton(text="➕", style="success", callback_data=f"inc_{item_id}")
+        )
+
+    grand_total = subtotal + DELIVERY_FEE
+    fmt_subtotal  = f"{subtotal:,.0f}".replace(",", " ") if subtotal.is_integer() else f"{subtotal:,.2f}".replace(",", " ")
+    fmt_delivery  = f"{DELIVERY_FEE:,.0f}".replace(",", " ")
+    fmt_grand     = f"{grand_total:,.0f}".replace(",", " ") if grand_total.is_integer() else f"{grand_total:,.2f}".replace(",", " ")
+
+    text += (
+        f"\n{'─' * 28}\n"
+        f"🍽  <b>Taomlar summasi:</b>        {fmt_subtotal} so'm\n"
+        f"🚗  <b>Yetkazib berish:</b>         10 000 yoki 15 000 so'm\n"
+        f"{'─' * 28}\n"
+        f"<i>Yakuniy summa hudud tanlangandan so'ng hisoblanadi.</i>"
+    )
+
+    builder.row(types.InlineKeyboardButton(text="🗑 Savatni tozalash", callback_data="clear_cart"))
+    builder.row(types.InlineKeyboardButton(text="✅ Buyurtmani rasmiylashtirish", callback_data="checkout"))
+
+    await message.answer(text, reply_markup=builder.as_markup())
+
+
 @router.callback_query(F.data == "view_cart")
 async def view_cart_handler(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()

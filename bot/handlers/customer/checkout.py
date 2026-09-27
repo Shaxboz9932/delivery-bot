@@ -321,6 +321,7 @@ async def finalize_order(message_or_callback_msg, state: FSMContext, bot, user):
     # 5. Mijozga tasdiq xabari
     main_builder = ReplyKeyboardBuilder()
     main_builder.add(types.KeyboardButton(text="🛒 Zakaz berish"))
+    main_builder.add(types.KeyboardButton(text="🛒 Savatni ko'rish"))
     main_builder.add(types.KeyboardButton(text="📜 Mening buyurtmalarim"))
     main_builder.adjust(2)
 
