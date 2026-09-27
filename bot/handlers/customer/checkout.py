@@ -89,12 +89,34 @@ async def process_phone(message: types.Message, state: FSMContext):
     builder.row(types.InlineKeyboardButton(text="Karta orqali hoziroq to'lash", callback_data="pay_card_now"))
 
     data = await state.get_data()
+    cart = data.get("cart", {})
     delivery_price = data.get("delivery_price", 10000.0)
     fmt_delivery = f"{delivery_price:,.0f}".replace(",", " ")
 
+    items_text = ""
+    total_price = 0.0
+    for item_id, item in cart.items():
+        item_price = float(item['price'])
+        item_total = item_price * item['quantity']
+        total_price += item_total
+        fmt_price = f"{item_price:,.0f}".replace(",", " ")
+        fmt_total = f"{item_total:,.0f}".replace(",", " ")
+        items_text += f"• <b>{item['name']}</b>: {item['quantity']} x {fmt_price} = {fmt_total} so'm\n"
+        
+    total_with_delivery = total_price + delivery_price
+    fmt_total_with_delivery = f"{total_with_delivery:,.0f}".replace(",", " ")
+
+    summary = (
+        f"📋 <b>Sizning buyurtmangiz:</b>\n"
+        f"{items_text}\n"
+        f"🚚 <b>Yetkazib berish:</b> {fmt_delivery} so'm\n"
+        f"{'—' * 20}\n"
+        f"💰 <b>Jami to'lov:</b> {fmt_total_with_delivery} so'm\n\n"
+        "To'lov turini tanlang:"
+    )
+
     await message.answer(
-        f"<b>Diqqat: Yetkazib berish xizmati narxi {fmt_delivery} so'm hisoblanadi.</b>\n\n"
-        "To'lov turini tanlang:",
+        summary,
         reply_markup=builder.as_markup()
     )
     await state.set_state(OrderCheckout.waiting_for_payment_method)
