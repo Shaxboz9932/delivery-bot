@@ -59,6 +59,17 @@ async def main():
     async def global_error_handler(event: types.ErrorEvent):
         logger.exception(f"Kutilmagan xatolik yuz berdi: {event.exception}")
 
+    # Menyu komandalarini o'rnatish
+    async def set_default_commands(bot: Bot):
+        commands = [
+            types.BotCommand(command="start", description="Botni ishga tushirish"),
+            types.BotCommand(command="myorders", description="Mening buyurtmalarim"),
+            types.BotCommand(command="balance", description="Kuryerlar uchun balans")
+        ]
+        await bot.set_my_commands(commands)
+    
+    await set_default_commands(bot)
+
     logger.info("Bot muvaffaqiyatli ishga tushdi va handlerlar ulandi...")
     await dp.start_polling(bot)
 

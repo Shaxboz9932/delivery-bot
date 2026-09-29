@@ -203,7 +203,22 @@ async def process_payment_screenshot(message: types.Message, bot):
                 reply_to_message_id=order.restaurant_msg_id
             )
         except Exception as e:
-            logger.exception(f"To'lov skrinshotini restoranga yuborishda xatolik (Order #{order.id}): {e}")
+            if "message to be replied not found" in str(e):
+                await bot.send_photo(
+                    chat_id=order.restaurant.telegram_group_id,
+                    photo=photo_id,
+                    caption=f"💳 <b>#{order.id} buyurtma uchun to'lov cheki yuborildi!</b>\nTasdiqlaysizmi?",
+                    reply_markup=keyboard.as_markup()
+                )
+            else:
+                logger.exception(f"To'lov skrinshotini restoranga yuborishda xatolik (Order #{order.id}): {e}")
+    else:
+        await bot.send_photo(
+            chat_id=order.restaurant.telegram_group_id,
+            photo=photo_id,
+            caption=f"💳 <b>#{order.id} buyurtma uchun to'lov cheki yuborildi!</b>\nTasdiqlaysizmi?",
+            reply_markup=keyboard.as_markup()
+        )
 
     await message.answer("✅ To'lov chekingiz restoranga yuborildi. Iltimos, tasdiqlanishini kuting.")
 
