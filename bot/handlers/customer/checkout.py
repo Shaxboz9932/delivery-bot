@@ -260,6 +260,7 @@ async def finalize_order(message_or_callback_msg, state: FSMContext, bot, user):
     total_price_with_delivery = total_price + DELIVERY_PRICE
     formatted_total = f"{total_price_with_delivery:,.0f}".replace(",", " ") if total_price_with_delivery.is_integer() else f"{total_price_with_delivery:,.2f}".replace(",", " ")
 
+
     payment_method_dict = {
         "cash": "Naqd (Yetkazib berilganda)",
         "card_delivery": "Karta orqali (Yetkazib berilganda)",
