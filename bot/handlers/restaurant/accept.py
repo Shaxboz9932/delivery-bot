@@ -81,6 +81,11 @@ async def accept_order(callback: types.CallbackQuery, bot):
             f"{callback.message.html_text}\n\n<b>Status:</b> Qabul qilindi, tayyorlanmoqda 👨‍🍳",
             reply_markup=keyboard
         )
+
+    await bot.send_message(
+        chat_id=order.customer_tg_id,
+        text=f"✅ <b>Buyurtmangiz (#{order.id}) qabul qilindi!</b>\nRestoran tayyorlashni boshladi 👨‍🍳"
+    )
     await callback.answer("Buyurtma qabul qilindi!")
 
 
